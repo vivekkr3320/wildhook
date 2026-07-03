@@ -1,0 +1,180 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Organization {
+  id                 String                @id @default(uuid())
+  name               String
+  razorpayCustomerId String?
+  plan               String                @default("free")
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  users              User[]
+  apiKeys            ApiKey[]
+  applications       Application[]
+  alertConfigs       AlertConfig[]
+  portalTokens       PortalToken[]
+  subscriptionsBilling SubscriptionBilling[]
+  usageCounters      UsageCounter[]
+}
+
+model User {
+  id           String       @id @default(uuid())
+  orgId        String
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  email        String       @unique
+  passwordHash String
+  role         String       @default("member")
+  createdAt    DateTime     @default(now())
+}
+
+model ApiKey {
+  id           String       @id @default(uuid())
+  orgId        String
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  keyHash      String       @unique
+  environment  String       @default("production")
+  createdAt    DateTime     @default(now())
+  revokedAt    DateTime?
+}
+
+model Application {
+  id           String        @id @default(uuid())
+  orgId        String
+  organization Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  name         String
+  createdAt    DateTime      @default(now())
+  eventTypes   EventType[]
+  events       Event[]
+  endpoints    Endpoint[]
+}
+
+model EventType {
+  id            String         @id @default(uuid())
+  appId         String
+  application   Application    @relation(fields: [appId], references: [id], onDelete: Cascade)
+  name          String
+  schemaJson    String?
+  createdAt     DateTime       @default(now())
+  events        Event[]
+  subscriptions Subscription[]
+}
+
+model Endpoint {
+  id             String          @id @default(uuid())
+  appId          String
+  application    Application     @relation(fields: [appId], references: [id], onDelete: Cascade)
+  url            String
+  description    String?
+  status         String          @default("active")
+  disabledAt     DateTime?
+  secret         String
+  subscriptions  Subscription[]
+  deliveries     Delivery[]
+  transformation Transformation?
+}
+
+model Subscription {
+  id          String    @id @default(uuid())
+  endpointId  String
+  endpoint    Endpoint  @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+  eventTypeId String
+  eventType   EventType @relation(fields: [eventTypeId], references: [id], onDelete: Cascade)
+  filterJson  String?
+}
+
+model Event {
+  id             String      @id @default(uuid())
+  appId          String
+  application    Application @relation(fields: [appId], references: [id], onDelete: Cascade)
+  eventTypeId    String
+  eventType      EventType   @relation(fields: [eventTypeId], references: [id], onDelete: Cascade)
+  payloadJson    String
+  idempotencyKey String?
+  createdAt      DateTime    @default(now())
+  deliveries     Delivery[]
+
+  @@index([appId, createdAt])
+}
+
+model Delivery {
+  id            String    @id @default(uuid())
+  eventId       String
+  event         Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  endpointId    String
+  endpoint      Endpoint  @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+  attemptNumber Int
+  status        String
+  responseCode  Int?
+  responseBody  String?
+  durationMs    Int?
+  nextRetryAt   DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([eventId])
+  @@index([nextRetryAt])
+}
+
+model Transformation {
+  id         String   @id @default(uuid())
+  endpointId String   @unique
+  endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+  code       String
+  language   String   @default("javascript")
+  enabled    Boolean  @default(true)
+}
+
+model AlertConfig {
+  id           String       @id @default(uuid())
+  orgId        String
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  channel      String
+  target       String
+  threshold    Int          @default(5)
+  enabled      Boolean      @default(true)
+}
+
+model PortalToken {
+  id           String       @id @default(uuid())
+  orgId        String
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  customerRef  String
+  tokenHash    String
+  expiresAt    DateTime
+}
+
+model Plan {
+  id                   String                 @id @default(uuid())
+  name                 String
+  eventLimit           Int
+  retentionDays        Int
+  priceInr             Int
+  featuresJson         String
+  subscriptionsBilling SubscriptionBilling[]
+}
+
+model SubscriptionBilling {
+  id             String       @id @default(uuid())
+  orgId          String
+  organization   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  planId         String
+  plan           Plan         @relation(fields: [planId], references: [id], onDelete: Cascade)
+  razorpaySubId  String?
+  status         String
+  currentPeriodEnd DateTime
+}
+
+model UsageCounter {
+  id           String       @id @default(uuid())
+  orgId        String
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  periodStart  DateTime
+  periodEnd    DateTime
+  eventCount   Int          @default(0)
+  overageCount Int          @default(0)
+}
